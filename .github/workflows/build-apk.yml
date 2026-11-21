@@ -1,1 +1,70 @@
 
+name: Build IMZYY KNOX Game Turbo APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Unzip Android Project
+        run: |
+          ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: Project ZIP tidak ditemukan!"
+            exit 1
+          fi
+
+          unzip -o -q "$ZIP"
+
+          SETTINGS=$(find . -name settings.gradle -o -name settings.gradle.kts | grep -v './.git/' | head -1)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle tidak ditemukan!"
+            exit 1
+          fi
+
+          DIR=$(dirname "$SETTINGS")
+
+          if [ ! -f "$DIR/app/build.gradle" ] && [ ! -f "$DIR/app/build.gradle.kts" ]; then
+            echo "ERROR: Folder Android project tidak valid!"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
+          echo "Project folder: $DIR"
+
+      - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: IMZYY-KNOX-GameTurbo-v5.1
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+

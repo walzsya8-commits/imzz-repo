@@ -6,6 +6,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,8 +28,15 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Check Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME" ]; then
+            echo "ERROR: Android SDK tidak ditemukan!"
+            exit 1
+          fi
 
       - name: Unzip Android Project
         run: |
@@ -39,7 +49,9 @@ jobs:
 
           unzip -o -q "$ZIP"
 
-          SETTINGS=$(find . -name settings.gradle -o -name settings.gradle.kts | grep -v './.git/' | head -1)
+          SETTINGS=$(find . \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -not -path './.git/*' | head -1)
 
           if [ -z "$SETTINGS" ]; then
             echo "ERROR: settings.gradle tidak ditemukan!"
@@ -48,17 +60,24 @@ jobs:
 
           DIR=$(dirname "$SETTINGS")
 
-          if [ ! -f "$DIR/app/build.gradle" ] && [ ! -f "$DIR/app/build.gradle.kts" ]; then
-            echo "ERROR: Folder Android project tidak valid!"
+          if [ ! -f "$DIR/app/build.gradle" ] && \
+             [ ! -f "$DIR/app/build.gradle.kts" ]; then
+            echo "ERROR: app/build.gradle tidak ditemukan!"
             exit 1
           fi
 
           echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
-          echo "Project folder: $DIR"
+          echo "Project: $DIR"
 
       - name: Build Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle assembleDebug --stacktrace
+        run: |
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -67,4 +86,3 @@ jobs:
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
-
